@@ -1,16 +1,3 @@
-data/prometheus/one/*
-data/prometheus/two/*
-data/prometheus/alertmanager/*
-data/rule/*
-data/compactor/*
-data/minio/**/*
-data/store/*
-
-!data/minio/thanos-data-bucket
-data/minio/thanos-data-bucket/*
-
-!.keep
-
+data/
 thanos/thanos
-
 grafana/provisioning/dashboards/*.json

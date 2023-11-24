@@ -1,51 +1,5 @@
 version: '3.2'
 services:
-  prometheus_one:
-    image: prom/prometheus:v2.21.0
-    container_name: prometheus_one
-    user: root
-    volumes:
-      - ./prometheus:/etc/config/
-      - ./data/prometheus/one:/data
-    command:
-      - '--config.file=/etc/config/prometheus_one.yml'
-      - '--storage.tsdb.path=/data'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=2h'
-      - '--web.enable-lifecycle'
-      - '--web.enable-admin-api'
-      - '--web.listen-address=:9001'
-      - '--storage.tsdb.min-block-duration=5m'
-      - '--storage.tsdb.max-block-duration=5m'
-    restart: unless-stopped
-    expose:
-      - 9001
-    ports:
-      - "9001:9001"
-
-  prometheus_two:
-    image: prom/prometheus:v2.21.0
-    container_name: prometheus_two
-    user: root
-    volumes:
-      - ./prometheus:/etc/config/
-      - ./data/prometheus/two:/data
-    command:
-      - '--config.file=/etc/config/prometheus_two.yml'
-      - '--storage.tsdb.path=/data'
-      - '--web.console.libraries=/etc/prometheus/console_libraries'
-      - '--web.console.templates=/etc/prometheus/consoles'
-      - '--storage.tsdb.retention.time=2h'
-      - '--web.enable-lifecycle'
-      - '--web.enable-admin-api'
-      - '--web.listen-address=:9002'
-      - '--storage.tsdb.min-block-duration=5m'
-      - '--storage.tsdb.max-block-duration=5m'
-    restart: unless-stopped
-    expose:
-      - 9002
-
   minio:
     image: minio/minio:RELEASE.2020-09-10T22-02-45Z
     container_name: minio
@@ -64,69 +18,35 @@ services:
       timeout: 20s
       retries: 3
 
-  thanos_sidecar_one:
-    build:
-      context: ./thanos
-      dockerfile: Dockerfile.thanos
-    container_name: thanos_sidecar_one
-    volumes:
-      - ./prometheus:/etc/config/
-      - ./data/prometheus/one:/data
-    command:
-      - "/wait-for-it.sh"
-      - "prometheus_one:9001"
-      - "--"
-      - "/thanos"
-      - "sidecar"
-      - "--log.level=debug"
-      - "--tsdb.path=/data"
-      - "--prometheus.url=http://prometheus_one:9001"
-      - "--reloader.config-file=/etc/config/prometheus_one.yml"
-      - |
-          --objstore.config=type: S3
-          config: 
-            bucket: thanos-data-bucket
-            access_key: myaccesskey
-            secret_key: mysecretkey
-            endpoint: minio:9000
-            insecure: true
-    expose:
-      - 10902
-      - 10901
+  minio-create-bucket:
+    image: minio/mc
+    container_name: minio_create_bucket
     depends_on:
       - minio
+    environment:
+      MINIO_ACCESS_KEY: myaccesskey
+      MINIO_SECRET_KEY: mysecretkey
+      MINIO_ENDPOINT: minio:9000
+      MINIO_BUCKET: thanos-data-bucket
+    volumes:
+      - ./data/minio:/data
+      - ./create_bucket.sh:/create_bucket.sh
+    entrypoint: /create_bucket.sh
 
-  thanos_sidecar_two:
-    build:
-      context: ./thanos
-      dockerfile: Dockerfile.thanos
-    container_name: thanos_sidecar_two
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    user: root
     volumes:
-      - ./prometheus:/etc/config/
-      - ./data/prometheus/two:/data
-    command:
-      - "/wait-for-it.sh"
-      - "prometheus_two:9002"
-      - "--"
-      - "/thanos"
-      - "sidecar"
-      - "--log.level=debug"
-      - "--tsdb.path=/data"
-      - "--prometheus.url=http://prometheus_two:9002"
-      - "--reloader.config-file=/etc/config/prometheus_two.yml"
-      - |
-          --objstore.config=type: S3
-          config: 
-            bucket: thanos-data-bucket
-            access_key: myaccesskey
-            secret_key: mysecretkey
-            endpoint: minio:9000
-            insecure: true
-    expose:
-      - 10902
-      - 10901
-    depends_on:
-      - minio
+      - ./grafana/provisioning:/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=${ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_PATHS_PROVISIONING=/provisioning
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
 
   thanos_querier:
     build:
@@ -134,17 +54,12 @@ services:
       dockerfile: Dockerfile.thanos
     container_name: thanos_querier
     command:
-      - "/wait-for-it.sh"
-      - "thanos_sidecar_one:10901"
-      - "--"
       - "/thanos"
       - "query"
       - "--log.level=debug"
       - "--log.format=logfmt"
-      - "--store=thanos_sidecar_one:10901"
-      - "--store=thanos_sidecar_two:10901"
       - "--store=thanos_store:10901"
-      # - "--store=thanos_rule:10901"
+      - "--store=thanos_recieve:10901"
       - "--store.sd-interval=5m"
       - "--query.replica-label=monitor"
     expose:
@@ -209,11 +124,11 @@ services:
       - "--retention.resolution-raw=30d"
       - "--retention.resolution-5m=120d"
       - "--retention.resolution-1h=1y"
-      - "--block-sync-concurrency=20"
       - "--compact.concurrency=1"
       - "--delete-delay=15m"
       - "--wait"
       - "--wait-interval=3m"
+      - "--compact.enable-vertical-compaction"
     expose:
       - 10902
       - 10901
@@ -221,7 +136,6 @@ services:
       - "10922:10902"
     depends_on:
       - minio
-
 
   thanos_store:
     build:
@@ -261,108 +175,38 @@ services:
     ports:
       - '10912:10902'
 
-  # alertmanager:
-  #   image: prom/alertmanager:v0.21.0
-  #   container_name: alertmanager
-  #   user: root
-  #   volumes:
-  #     - ./prometheus:/etc/config/
-  #     - ./data/prometheus/alertmanager:/data
-  #   command:
-  #     - '--config.file=/etc/config/alertmanager.yml'
-  #   restart: unless-stopped
-  #   expose:
-  #     - 9093
-  #   ports:
-  #     - "9093:9093"
-
-  # thanos_rule:
-  #   build:
-  #     context: ./thanos
-  #     dockerfile: Dockerfile.thanos
-  #   container_name: thanos_rule
-  #   volumes:
-  #     - ./data/rule:/data
-  #     - ./thanos/rule:/etc/config/
-  #   command:
-  #     - "/wait-for-it.sh"
-  #     - "minio:9000"
-  #     - "--"
-  #     - "/thanos"
-  #     - "rule"
-  #     - "--log.level=debug"
-  #     - |
-  #       --objstore.config=type: S3
-  #       config: 
-  #           bucket: thanos-data-bucket
-  #           access_key: myaccesskey
-  #           secret_key: mysecretkey
-  #           endpoint: minio:9000
-  #           insecure: true
-  #     - "--data-dir=/data"
-  #     - "--log.format=logfmt"
-  #     - "--rule-file=/etc/config/rules.yml"
-  #     - "--alert.query-url=http://localhost:10902"
-  #     - "--alertmanagers.url=http://alertmanager:9093"
-  #     - "--query=thanos_querier:10902"
-  #   expose:
-  #     - 10902
-  #     - 10901
-  #   depends_on:
-  #     - minio
-  #   ports:
-  #     - '10932:10902'
-
-  # grafana:
-  #   image: grafana/grafana:7.4.5
-  #   container_name: grafana
-  #   user: root
-  #   volumes:
-  #     - ./grafana/provisioning:/provisioning
-  #   environment:
-  #     - GF_SECURITY_ADMIN_USER=${ADMIN_USER:-admin}
-  #     - GF_SECURITY_ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin}
-  #     - GF_USERS_ALLOW_SIGN_UP=false
-  #     - GF_PATHS_PROVISIONING=/provisioning
-  #   restart: unless-stopped
-  #   ports:
-  #     - "3000:3000"
-
-  # bucket_web:
-  #   build:
-  #     context: ./thanos
-  #     dockerfile: Dockerfile.thanos
-  #   container_name: bucket_web
-  #   command:
-  #     - "/thanos"
-  #     - "tools"
-  #     - "bucket"
-  #     - "web"
-  #     - |
-  #       --objstore.config=type: S3
-  #       config: 
-  #           bucket: thanos-data-bucket
-  #           access_key: myaccesskey
-  #           secret_key: mysecretkey
-  #           endpoint: minio:9000
-  #           insecure: true
-  #     - "--http-address=0.0.0.0:8080"
-  #     - "--label=monitor"
-  #   expose:
-  #     - 8080
-  #   ports:
-  #     - "8080:8080"
-
-  # debug:
-  #   build:
-  #     context: thanos
-  #     dockerfile: Dockerfile.debug
-  #   container_name: debug
-  #   user: root
-  #   stdin_open: true
-  #   tty: true
-  #   expose:
-  #     - 10902
-  #     - 10901
-  #   ports:
-  #     - "10902:10902"
+  thanos_recieve:
+    build:
+      context: ./thanos
+      dockerfile: Dockerfile.thanos
+    container_name: thanos_recieve
+    volumes:
+      - ./data/store:/data
+    command:
+      - "/wait-for-it.sh"
+      - "minio:9000"
+      - "--"
+      - "/thanos"
+      - "receive"
+      - '--label=recive="1"'
+      - "--log.level=debug"
+      - |
+        --objstore.config=type: S3
+        config:
+            bucket: thanos-data-bucket
+            access_key: myaccesskey
+            secret_key: mysecretkey
+            endpoint: minio:9000
+            insecure: true
+      - "--tsdb.path=/data"
+      - "--log.format=logfmt"
+      - "--tsdb.out-of-order.time-window=1y"
+    restart: unless-stopped
+    expose:
+      - 10902
+      - 10901
+    depends_on:
+      - minio
+    ports:
+      - '10932:10902'
+      - '19291:19291'
