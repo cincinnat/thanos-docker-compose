@@ -59,7 +59,9 @@ services:
       - "--log.level=debug"
       - "--log.format=logfmt"
       - "--store=thanos_store:10901"
-      - "--store=thanos_recieve:10901"
+      - "--store=thanos_receive_1:10901"
+      - "--store=thanos_receive_2:10901"
+      - "--store=thanos_receive_3:10901"
       - "--store.sd-interval=5m"
       - "--query.replica-label=monitor"
     expose:
@@ -127,6 +129,7 @@ services:
       - "--wait"
       - "--wait-interval=3m"
       - "--compact.enable-vertical-compaction"
+      - "--deduplication.replica-label=receive"
     expose:
       - 10902
       - 10901
@@ -171,21 +174,21 @@ services:
     ports:
       - '10912:10902'
 
-  thanos_recieve:
+  thanos_receive_1: &receiver
     build:
       context: ./thanos
       dockerfile: Dockerfile.thanos
-    container_name: thanos_recieve
-    volumes:
-      - ./data/store:/data
+    container_name: thanos_receive_1
+    restart: unless-stopped
     command:
       - "/wait-for-it.sh"
       - "minio:9000"
       - "--"
       - "/thanos"
       - "receive"
-      - '--label=recive="1"'
       - "--log.level=debug"
+      - '--label=cluster="thanos"'
+      - '--label=receive="1"'
       - |
         --objstore.config=type: S3
         config:
@@ -197,6 +200,86 @@ services:
       - "--tsdb.path=/data"
       - "--log.format=logfmt"
       - "--tsdb.out-of-order.time-window=1y"
+    expose:
+      - 10902
+      - 10901
+    depends_on:
+      - minio
+
+  thanos_receive_2:
+    <<: *receiver
+    container_name: thanos_receive_2
+    command:
+      - "/wait-for-it.sh"
+      - "minio:9000"
+      - "--"
+      - "/thanos"
+      - "receive"
+      - "--log.level=debug"
+      - '--label=cluster="thanos"'
+      - '--label=receive="2"'
+      - |
+        --objstore.config=type: S3
+        config:
+            bucket: thanos-data-bucket
+            access_key: myaccesskey
+            secret_key: mysecretkey
+            endpoint: minio:9000
+            insecure: true
+      - "--tsdb.path=/data"
+      - "--log.format=logfmt"
+      - "--tsdb.out-of-order.time-window=1y"
+
+  thanos_receive_3:
+    <<: *receiver
+    container_name: thanos_receive_3
+    command:
+      - "/wait-for-it.sh"
+      - "minio:9000"
+      - "--"
+      - "/thanos"
+      - "receive"
+      - "--log.level=debug"
+      - '--label=cluster="thanos"'
+      - '--label=receive="3"'
+      - |
+        --objstore.config=type: S3
+        config:
+            bucket: thanos-data-bucket
+            access_key: myaccesskey
+            secret_key: mysecretkey
+            endpoint: minio:9000
+            insecure: true
+      - "--tsdb.path=/data"
+      - "--log.format=logfmt"
+      - "--tsdb.out-of-order.time-window=1y"
+
+  thanos_receive_route:
+    build:
+      context: ./thanos
+      dockerfile: Dockerfile.thanos
+    container_name: thanos_receive_route
+    command:
+      - "/wait-for-it.sh"
+      - "minio:9000"
+      - "--"
+      - "/thanos"
+      - "receive"
+      - '--label=cluster="thanos"'
+      - "--log.level=debug"
+      - "--receive.hashrings-algorithm=hashmod"
+      - |
+        --receive.hashrings=[
+          {
+            "endpoints": [
+              "thanos_receive_1:10901",
+              "thanos_receive_2:10901",
+              "thanos_receive_3:10901"
+            ]
+          }
+        ]
+      - "--receive.replication-factor=2"
+      - "--log.format=logfmt"
     restart: unless-stopped
     expose:
       - 10902
