@@ -101,8 +101,6 @@ services:
       context: ./thanos
       dockerfile: Dockerfile.thanos
     container_name: thanos_compactor
-    volumes:
-      - ./data/compactor:/data
     command:
       - "/wait-for-it.sh"
       - "minio:9000"
@@ -142,8 +140,6 @@ services:
       context: ./thanos
       dockerfile: Dockerfile.thanos
     container_name: thanos_store
-    volumes:
-      - ./data/store:/data
     command:
       - "/wait-for-it.sh"
       - "minio:9000"
