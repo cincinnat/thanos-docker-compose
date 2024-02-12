@@ -58,10 +58,10 @@ services:
       - "query"
       - "--log.level=debug"
       - "--log.format=logfmt"
-      - "--store=thanos_store:10901"
-      - "--store=thanos_receive_1:10901"
-      - "--store=thanos_receive_2:10901"
-      - "--store=thanos_receive_3:10901"
+      - "--endpoint-strict=thanos_store:10901"
+      - "--endpoint-strict=thanos_receive_1:10901"
+      - "--endpoint-strict=thanos_receive_2:10901"
+      - "--endpoint-strict=thanos_receive_3:10901"
       - "--store.sd-interval=5m"
       - "--query.replica-label=monitor"
     expose:
@@ -267,7 +267,7 @@ services:
       - "receive"
       - '--label=cluster="thanos"'
       - "--log.level=debug"
-      - "--receive.hashrings-algorithm=hashmod"
+      - "--receive.hashrings-algorithm=ketama"
       - |
         --receive.hashrings=[
           {
@@ -278,7 +278,7 @@ services:
             ]
           }
         ]
-      - "--receive.replication-factor=2"
+      - "--receive.replication-factor=3"
       - "--log.format=logfmt"
     restart: unless-stopped
     expose:
