@@ -25,14 +25,14 @@ up: $(THANOS_BINARY)
 	@echo ">> copying dashboards to development env"
 	@rm -f ./grafana/provisioning/dashboards/*.json
 	cp $(THANOS_SOURCE)/examples/dashboards/*.json ./grafana/provisioning/dashboards
-	docker-compose -f "$(COMPOSE_FILE)" up -d --build
+	docker compose -f "$(COMPOSE_FILE)" up -d --build
 
 .PHONY: restart
 restart: ## Rebuilds and restarts the container without building the binary
 restart:
-	docker-compose -f "$(COMPOSE_FILE)" up -d --build
+	docker compose -f "$(COMPOSE_FILE)" up -d --build
 
 .PHONY: down
 down: ## Brings down the docker-compose setup
 down:
-	docker-compose -f "$(COMPOSE_FILE)" down
+	docker compose -f "$(COMPOSE_FILE)" down -v

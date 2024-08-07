@@ -68,7 +68,7 @@ services:
       - 10902
       - 10901
     ports:
-      - "10902:10902"
+      - "15902:10902"
     depends_on:
       - minio
 
@@ -203,6 +203,8 @@ services:
     expose:
       - 10902
       - 10901
+    ports:
+      - '11902:10902'
     depends_on:
       - minio
 
