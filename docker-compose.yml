@@ -231,6 +231,8 @@ services:
       - "--tsdb.path=/data"
       - "--log.format=logfmt"
       - "--tsdb.out-of-order.time-window=1y"
+    ports:
+      - '11903:10902'
 
   thanos_receive_3:
     <<: *receiver
@@ -255,6 +257,8 @@ services:
       - "--tsdb.path=/data"
       - "--log.format=logfmt"
       - "--tsdb.out-of-order.time-window=1y"
+    ports:
+      - '11904:10902'
 
   thanos_receive_route:
     build:
